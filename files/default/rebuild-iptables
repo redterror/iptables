@@ -33,8 +33,10 @@ our $TEMPLATE = '/etc/iptables.d';
 
 # Return the prefix
 sub prefix {
+  my $type = shift;
   my $data;
-  ( $data = <<'END_OF_PREFIX' ) =~ s/^\s+//gm;
+  if ( $type eq 'filter' ) {
+    ( $data = <<'END_OF_PREFIX' ) =~ s/^\s+//gm;
         *filter
         :INPUT ACCEPT
     :FORWARD ACCEPT
@@ -43,20 +45,36 @@ sub prefix {
     -A INPUT -j FWR
     -A FWR -i lo -j ACCEPT
 END_OF_PREFIX
-
+  } elsif ( $type eq 'mangle' ) {
+    ( $data = <<'END_OF_PREFIX' ) =~ s/^\s+//gm;
+        *mangle
+	:PREROUTING ACCEPT
+	:INPUT ACCEPT
+	:FORWARD ACCEPT
+	:OUTPUT ACCEPT
+	:POSTROUTING ACCEPT
+END_OF_PREFIX
+  }
   return $data;
 }
 
 # Return the suffix
 sub suffix {
+  my $type = shift;
   my $data;
-  ( $data = <<'END_OF_SUFFIX' ) =~ s/^\s+//gm;
+  if ( $type eq 'filter' ) {
+    ( $data = <<'END_OF_SUFFIX' ) =~ s/^\s+//gm;
         # Rejects all remaining connections with port-unreachable errors.
 
         -A FWR -p tcp -m tcp --tcp-flags SYN,RST,ACK SYN -j REJECT --reject-with icmp-port-unreachable
         -A FWR -p udp -j REJECT --reject-with icmp-port-unreachable
         COMMIT
 END_OF_SUFFIX
+  } else {
+    ( $data = <<'END_OF_SUFFIX' ) =~ s/^\s+//gm;
+        COMMIT
+END_OF_SUFFIX
+  }
 
   return $data;
 }
@@ -162,22 +180,39 @@ if ($help) {
   print $version, "\n";
   exit;
 }
-my @modules;
+my ( @filter_modules, @mangle_modules );
 
 if ( -d '/etc/iptables.d' ) {
-  @modules = </etc/iptables.d/*>;
+  opendir(IPTABLES_D, "/etc/iptables.d") or die $!;
+  while (my $file = readdir(IPTABLES_D)) {
+    next if $file =~ /\.swp$/;
+
+    if ( $file =~ /mangle_/ ) {
+      push @mangle_modules, $file;
+    } else {
+      push @filter_modules, $file;
+    }
+  }
 }
 
 # Concatenate everything together.
 my @data;
-push( @data, prefix() );
+push( @data, prefix('filter') );
 push( @data, "\n" );
-for my $module (@modules) {
+for my $module (@filter_modules) {
   push( @data, read_iptables($module) );
   push( @data, "\n" );
 }
-push( @data, suffix() );
+push( @data, suffix('filter') );
 push( @data, snat() );
+
+push (@data, prefix('mangle'));
+push (@data, "\n");
+for my $module (@mangle_modules) {
+  push (@data, read_iptables($module));
+  push (@data, "\n");
+}
+push( @data, suffix('mangle') );
 
 if ( -f '/etc/debian_version' ) {
   install_debian(@data);

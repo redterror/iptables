@@ -54,6 +54,14 @@ END_OF_PREFIX
 	:OUTPUT ACCEPT
 	:POSTROUTING ACCEPT
 END_OF_PREFIX
+  } elsif ( $type eq 'nat' ) {
+    ( $data = <<'END_OF_PREFIX' ) =~ s/^\s+//gm;
+        *nat
+	:PREROUTING ACCEPT
+	:INPUT ACCEPT
+	:OUTPUT ACCEPT
+	:POSTROUTING ACCEPT
+END_OF_PREFIX
   }
   return $data;
 }
@@ -180,7 +188,7 @@ if ($help) {
   print $version, "\n";
   exit;
 }
-my ( @filter_modules, @mangle_modules );
+my ( @filter_modules, @mangle_modules, @nat_modules );
 
 if ( -d '/etc/iptables.d' ) {
   opendir(IPTABLES_D, "/etc/iptables.d") or die $!;
@@ -189,6 +197,8 @@ if ( -d '/etc/iptables.d' ) {
 
     if ( $file =~ /mangle_/ ) {
       push @mangle_modules, $file;
+    } elsif ( $file =~ /nat_/) {
+      push @nat_modules, $file;
     } else {
       push @filter_modules, $file;
     }
@@ -205,6 +215,14 @@ for my $module (@filter_modules) {
 }
 push( @data, suffix('filter') );
 push( @data, snat() );
+
+push (@data, prefix('nat'));
+push (@data, "\n");
+for my $module (@nat_modules) {
+  push (@data, read_iptables($module));
+  push (@data, "\n");
+}
+push( @data, suffix('nat') );
 
 push (@data, prefix('mangle'));
 push (@data, "\n");

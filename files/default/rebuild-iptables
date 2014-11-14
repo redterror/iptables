@@ -192,9 +192,8 @@ my ( @filter_modules, @mangle_modules, @nat_modules );
 
 if ( -d '/etc/iptables.d' ) {
   opendir(IPTABLES_D, "/etc/iptables.d") or die $!;
-  while (my $file = readdir(IPTABLES_D)) {
-    next if $file =~ /\.swp$/;
-
+  my @files = sort grep { (! /\.swp$/) && -f "/etc/iptables.d/$_" } readdir(IPTABLES_D);
+  foreach my $file (@files) {
     if ( $file =~ /mangle_/ ) {
       push @mangle_modules, $file;
     } elsif ( $file =~ /nat_/) {
